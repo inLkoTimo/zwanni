@@ -62,8 +62,8 @@ test("a full round: bidding, autofill, computer verdict", () => {
   }
 
   assert.equal(state.phase, "finished");
-  const a = state.round!.rosterA.length;
-  const b = state.round!.rosterB.length;
+  const a: number = state.round!.rosterA.length;
+  const b: number = state.round!.rosterB.length;
   assert.ok(a === SLOTS_PER_DRAFTER || b === SLOTS_PER_DRAFTER);
   assert.equal(a + b, 8);
 
