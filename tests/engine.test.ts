@@ -35,7 +35,7 @@ test("addParticipant fills drafter B, then spectators", () => {
 test("a full round: bidding, autofill, computer verdict", () => {
   let state = createInitialState("host", "Timo");
   state = addParticipant(state, { id: "guest", name: "Alex" });
-  state = startRound(state, "fussball", seededRng(42));
+  state = startRound(state, "fussballvereine", seededRng(42));
 
   assert.equal(state.phase, "drafting");
   assert.equal(state.round?.items.length, 8);
