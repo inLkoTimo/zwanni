@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useIdentity } from "./useIdentity";
 import { useRoom } from "./useRoom";
@@ -17,6 +17,11 @@ import {
 } from "@/lib/game/engine";
 import type { DrafterSlot } from "@/lib/game/types";
 
+/** Wie lange eine gerade vergebene Karte noch sichtbar bleibt, bevor
+ *  zur nächsten Karte (oder zum Ergebnis-Bildschirm) gewechselt wird -
+ *  in Millisekunden. */
+const CARD_REVEAL_DELAY_MS = 1400;
+
 export type Screen = "home" | "create" | "join" | "room";
 
 export function useZwanniRoom() {
@@ -28,6 +33,48 @@ export function useZwanniRoom() {
   const [prefillCode, setPrefillCode] = useState("");
 
   const { room, error: roomError } = useRoom(roomId);
+
+  // Wenn eine Karte vergeben wird (Position rückt vor) oder die
+  // Runde dadurch zu Ende geht, zeigen wir noch kurz den alten Stand
+  // weiter, statt sofort umzuschalten - so sieht man in Ruhe, wer
+  // die Karte bekommen hat, bevor es zur nächsten Karte (oder zum
+  // Ergebnis) springt. Alle anderen Wechsel (Raum betreten, neue
+  // Runde gestartet, ...) übernehmen wir sofort.
+  const [displayRoom, setDisplayRoom] = useState<typeof room>(room);
+  const prevRoomRef = useRef<typeof room>(null);
+
+  useEffect(() => {
+    const prev = prevRoomRef.current;
+    prevRoomRef.current = room;
+
+    if (!room) {
+      setDisplayRoom(null);
+      return;
+    }
+
+    const prevRound = prev?.game_state.round;
+    const nextRound = room.game_state.round;
+
+    const sameRoom = Boolean(prev && prev.id === room.id);
+    const cardJustAwarded = Boolean(
+      sameRoom &&
+        prev!.game_state.phase === "drafting" &&
+        prevRound &&
+        nextRound &&
+        prevRound.categoryId === nextRound.categoryId &&
+        nextRound.position > prevRound.position,
+    );
+    const roundJustFinished = Boolean(
+      sameRoom && prev!.game_state.phase === "drafting" && room.game_state.phase !== "drafting",
+    );
+
+    if (cardJustAwarded || roundJustFinished) {
+      const timer = setTimeout(() => setDisplayRoom(room), CARD_REVEAL_DELAY_MS);
+      return () => clearTimeout(timer);
+    }
+
+    setDisplayRoom(room);
+  }, [room]);
 
   useEffect(() => {
     try {
@@ -133,7 +180,7 @@ export function useZwanniRoom() {
   return {
     screen,
     setScreen,
-    room,
+    room: displayRoom,
     roomError,
     me,
     myRole,

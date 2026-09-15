@@ -329,34 +329,32 @@ function finishItemAndAdvance(state: GameState, round: RoundState): GameState {
 
 // --- Computer-Einschätzung ---------------------------------------------
 
-/** Wandelt einen Text in eine stabile Zahl von 0 bis 999 um - gleicher
- *  Text ergibt immer dieselbe Zahl, aber schon eine kleine Änderung
- *  im Text ergibt eine ganz andere Zahl. Nur dafür gedacht, jeder
- *  Karte eine feste, aber "zufällig wirkende" versteckte Punktzahl
- *  zu geben (siehe hiddenRank) - kein echter Zufall, aber auch keine
- *  Reihen-/Musterbildung, die man durchschauen könnte. */
-function stableSpread(text: string): number {
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  }
-  return hash % 1000;
-}
-
 /** Die versteckte Stärke-Punktzahl einer Karte (0 = schwächste, 100 =
  *  stärkste). Die Spieler sehen diesen Wert nie - weder während der
  *  Auktion noch danach - er wird nur für `auctioneerVerdict`
- *  gebraucht. Ist bei einer Karte ein eigener `rank` hinterlegt (für
- *  spätere, von Hand fein abgestimmte Kategorien), wird der
- *  verwendet. Ohne eigenen Wert wird die Punktzahl aus dem
- *  Kartennamen abgeleitet: stabil (dieselbe Karte hat also immer
- *  dieselbe versteckte Stärke), aber über viele unterschiedliche
- *  Werte gestreut statt nur "schwach" oder "stark" - "weak"-Karten
- *  liegen dabei immer im unteren Bereich. */
+ *  gebraucht.
+ *
+ *  Ist bei einer Karte ein eigener `rank` hinterlegt, wird der
+ *  verwendet. Ohne eigenen Wert nutzen wir etwas, das schon längst
+ *  da ist: die Reihenfolge der Karte in ihrer Kategorien-Liste
+ *  (categories.ts) - die ist von Anfang an nach Bekanntheit/Stärke
+ *  sortiert (die bekanntesten/stärksten Einträge zuerst, die
+ *  "weak"-Karten ganz am Ende). Der erste Eintrag einer Kategorie
+ *  bekommt also die höchste Punktzahl, der letzte die niedrigste -
+ *  eine echte, von Hand gemachte Rangliste, kein Zufall. */
 function hiddenRank(categoryId: string, card: DraftedCard): number {
   if (typeof card.rank === "number") return card.rank;
-  const spread = stableSpread(`${categoryId}:${card.name}`) % 61; // 0..60
-  return card.weak ? 5 + (spread % 25) : 40 + spread; // weak: 5-29, stark: 40-100
+
+  const category = categoryById(categoryId);
+  const index = category?.items.findIndex((i) => i.name === card.name) ?? -1;
+
+  if (!category || index < 0 || category.items.length <= 1) {
+    // Sollte eigentlich nicht vorkommen - nur als Absicherung.
+    return card.weak ? 20 : 65;
+  }
+
+  const positionInList = index / (category.items.length - 1); // 0 = erster Eintrag, 1 = letzter
+  return Math.round(95 - positionInList * 75); // 95 (stärkste) bis 20 (schwächste)
 }
 
 /** Der "Computer-Verdikt": jede gedraftete Karte hat im Hintergrund
