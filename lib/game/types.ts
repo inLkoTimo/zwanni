@@ -24,6 +24,10 @@ export type CurrentAuction = {
   highBidder: DrafterSlot | null;
   /** Wer als nächstes an der Reihe ist (erhöhen oder zuschlagen). */
   turnToAct: DrafterSlot;
+  /** true = die andere Seite hat schon 4 Karten und kann nicht mehr
+   *  mitbieten - der Opener bietet allein, und sein Gebot gewinnt
+   *  sofort (kein Erhöhen/Zuschlagen mehr nötig). */
+  solo: boolean;
 };
 
 export type RoundState = {

@@ -94,7 +94,12 @@ function TeamColumn({
               Gebot: {current.highBid}$
             </p>
           )}
-          {isOpener && <p className="text-foreground/50">eröffnet gleich…</p>}
+          {isOpener && !current.solo && <p className="text-foreground/50">eröffnet gleich…</p>}
+          {isOpener && current.solo && (
+            <p className="text-gold">
+              {opponentName} hat schon 4 Karten – dein Gebot gewinnt sofort.
+            </p>
+          )}
         </div>
       )}
 
@@ -109,20 +114,22 @@ function TeamColumn({
                   onClick={() => onOpen(side, amount)}
                   className={`w-full rounded-xl ${TEAM_BG[side]} text-black font-bold py-2.5 disabled:opacity-50`}
                 >
-                  Eröffnen
+                  {current.solo ? "Karte holen" : "Eröffnen"}
                 </button>
               </>
             ) : (
               <>
                 <p className="text-sm text-foreground/60">
-                  Kein Gebot mehr abgeben – du hast kein Geld mehr übrig.
+                  {current.solo
+                    ? "Du hast kein Geld mehr übrig – die Karte gehört trotzdem dir."
+                    : "Kein Gebot mehr abgeben – du hast kein Geld mehr übrig."}
                 </p>
                 <button
                   disabled={loading}
                   onClick={() => onForfeit(side)}
                   className="w-full rounded-xl border border-foreground/30 py-2.5"
                 >
-                  Karte kostenlos abgeben
+                  {current.solo ? "Karte kostenlos nehmen" : "Karte kostenlos abgeben"}
                 </button>
               </>
             )
@@ -246,20 +253,7 @@ export function DraftScreen({
   if (!round) return null;
 
   const current = round.current;
-  const item = round.position < round.items.length ? round.items[round.position] : null;
-
-  // Wenn current null ist, obwohl die Runde noch läuft, heißt das:
-  // eine Seite hat schon 4 Karten und kann nicht mehr mitbieten -
-  // die aktuelle Karte wird gerade automatisch vergeben.
-  const awaitingAutoAward = !current && item;
-  const fullSide: DrafterSlot | null = !awaitingAutoAward
-    ? null
-    : round.rosterA.length >= 4
-      ? "A"
-      : round.rosterB.length >= 4
-        ? "B"
-        : null;
-  const autoReceiver: DrafterSlot | null = fullSide ? (fullSide === "A" ? "B" : "A") : null;
+  const item = current ? round.items[round.position] : null;
 
   return (
     <main className="min-h-dvh p-4 sm:p-6 flex flex-col items-center">
@@ -285,14 +279,6 @@ export function DraftScreen({
             </div>
           )}
         </div>
-
-        {awaitingAutoAward && fullSide && autoReceiver && (
-          <p className="text-center text-sm text-gold animate-pulse">
-            Team {fullSide === "A" ? teamName(room.game_state, "A") : teamName(room.game_state, "B")}{" "}
-            hat schon 4 Karten – diese Karte geht automatisch an{" "}
-            {autoReceiver === "A" ? teamName(room.game_state, "A") : teamName(room.game_state, "B")}…
-          </p>
-        )}
 
         {myRole === "spectator" && (
           <p className="text-center text-foreground/50 text-sm">Du schaust zu.</p>

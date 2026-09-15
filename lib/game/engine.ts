@@ -11,10 +11,12 @@
 //    oder nimmt das Gebot an ("zuschlagen") - dann geht die Karte
 //    für diesen Preis an den Höchstbietenden.
 // 3. Sobald EIN Drafter 4 Karten hat, kann diese Seite nicht mehr
-//    mitbieten - die restlichen Karten gehen nacheinander (eine
-//    nach der anderen, nicht alle auf einmal) automatisch für 1$
-//    (bzw. 0$, wenn kein Geld mehr da ist) an den anderen Drafter.
-//    Die Runde endet erst, wenn WIRKLICH alle Karten vergeben sind -
+//    mitbieten - für die restlichen Karten ist es dann eine
+//    "Solo-Auktion" (current.solo = true): nur noch der andere
+//    Drafter ist dran, muss selbst einen Betrag setzen (mindestens
+//    1, wenn Budget da ist), und bekommt die Karte direkt dafür -
+//    es gibt ja niemanden mehr, der noch mitbieten könnte. Die
+//    Runde endet erst, wenn WIRKLICH alle Karten vergeben sind -
 //    also wenn am Ende beide Drafter 4 Karten haben.
 // 4. Danach schätzt der Computer (kein echtes KI-Urteil, siehe
 //    auctioneerVerdict weiter unten), wer bei einem gedachten
@@ -121,7 +123,7 @@ export function startRound(
     categoryLabel: category.label,
     items,
     position: 0,
-    current: openAuction(0, items),
+    current: openAuction(0, items, { rosterA: [], rosterB: [] }),
     budgetA: STARTING_BUDGET,
     budgetB: STARTING_BUDGET,
     rosterA: [],
@@ -136,15 +138,30 @@ export function startRound(
   };
 }
 
-function openAuction(position: number, items: CategoryItem[]): CurrentAuction | null {
+/** Startet die Auktion für die Karte an `position`. Ist eine Seite
+ *  schon voll (4 Karten), kann sie nicht mehr mitbieten - dann ist
+ *  es eine Solo-Auktion (`solo: true`): Opener ist automatisch die
+ *  andere Seite, und ihr Gebot gewinnt sofort (siehe
+ *  placeOpeningBid). */
+function openAuction(
+  position: number,
+  items: CategoryItem[],
+  rosters: { rosterA: DraftedCard[]; rosterB: DraftedCard[] },
+): CurrentAuction | null {
   if (position >= items.length) return null;
-  const opener: DrafterSlot = position % 2 === 0 ? "A" : "B";
+
+  const aFull = rosters.rosterA.length >= SLOTS_PER_DRAFTER;
+  const bFull = rosters.rosterB.length >= SLOTS_PER_DRAFTER;
+  const solo = aFull || bFull;
+  const opener: DrafterSlot = solo ? (aFull ? "B" : "A") : position % 2 === 0 ? "A" : "B";
+
   return {
     opener,
     awaitingOpen: true,
     highBid: 0,
     highBidder: null,
     turnToAct: opener,
+    solo,
   };
 }
 
@@ -174,6 +191,12 @@ export function placeOpeningBid(
   if (!Number.isInteger(amount) || amount < 1) fail("Mindestgebot ist 1.");
   if (amount > budgetOf(round, drafter)) fail("Dafür reicht dein Budget nicht.");
 
+  if (current.solo) {
+    // Die andere Seite ist schon voll und kann nicht mitbieten - das
+    // Gebot gewinnt direkt, niemand muss (oder kann) es annehmen.
+    return awardCurrentItem(state, round, drafter, amount);
+  }
+
   const nextCurrent: CurrentAuction = {
     ...current,
     awaitingOpen: false,
@@ -189,8 +212,10 @@ export function placeOpeningBid(
 }
 
 /** Der Opener hat kein Geld mehr, um überhaupt zu eröffnen (Budget
- *  0) - die Karte geht kostenlos an die andere Seite, die Runde
- *  läuft normal weiter. */
+ *  0). Normalfall: die Karte geht kostenlos an die andere Seite, die
+ *  Runde läuft normal weiter. In einer Solo-Auktion (die andere
+ *  Seite ist schon voll und kann gar nichts mehr bekommen) geht die
+ *  Karte stattdessen kostenlos an den Opener selbst. */
 export function forfeitOpening(state: GameState, drafter: DrafterSlot): GameState {
   const round = requireRound(state);
   const current = round.current as CurrentAuction;
@@ -198,7 +223,7 @@ export function forfeitOpening(state: GameState, drafter: DrafterSlot): GameStat
   if (!current.awaitingOpen) fail("Die Eröffnung ist schon erfolgt.");
   if (current.turnToAct !== drafter) fail("Du bist gerade nicht dran.");
 
-  return awardCurrentItem(state, round, other(drafter), 0);
+  return awardCurrentItem(state, round, current.solo ? drafter : other(drafter), 0);
 }
 
 export function raiseBid(
@@ -282,9 +307,6 @@ function awardCurrentItem(
 function finishItemAndAdvance(state: GameState, round: RoundState): GameState {
   const nextPosition = round.position + 1;
 
-  const aFull = round.rosterA.length >= SLOTS_PER_DRAFTER;
-  const bFull = round.rosterB.length >= SLOTS_PER_DRAFTER;
-
   if (nextPosition >= round.items.length) {
     // Wirklich alle Karten vergeben (beide Seiten haben ihre 4
     // Slots voll) - jetzt erst endet die Runde.
@@ -295,67 +317,14 @@ function finishItemAndAdvance(state: GameState, round: RoundState): GameState {
     };
   }
 
-  if (aFull || bFull) {
-    // Eine Seite ist schon voll und kann nicht mehr mitbieten - die
-    // nächste Karte wird automatisch vergeben (siehe
-    // resolveAutoAward), eine nach der anderen, statt alle auf
-    // einmal. `current: null` heißt "wartet auf automatische
-    // Vergabe".
-    return { ...state, round: { ...round, position: nextPosition, current: null } };
-  }
-
   return {
     ...state,
     round: {
       ...round,
       position: nextPosition,
-      current: openAuction(nextPosition, round.items),
+      current: openAuction(nextPosition, round.items, round),
     },
   };
-}
-
-/** Eine Seite hat ihre 4 Slots voll und kann nicht mehr mitbieten -
- *  diese Funktion vergibt GENAU EINE weitere Karte automatisch an
- *  die andere Seite (für 1$, bzw. 0$ ohne Budget) und geht dann zur
- *  nächsten Karte über. Wird vom Client wiederholt aufgerufen
- *  (einmal pro Karte), damit man live mitverfolgen kann, wie die
- *  Runde zu Ende geht, statt dass sie abrupt abbricht. Gibt `null`
- *  zurück, wenn gerade keine automatische Vergabe ansteht. */
-export function resolveAutoAward(state: GameState): GameState | null {
-  if (state.phase !== "drafting" || !state.round || state.round.current !== null) return null;
-  const round = state.round;
-  const item = round.items[round.position];
-  if (!item) return null;
-
-  const aFull = round.rosterA.length >= SLOTS_PER_DRAFTER;
-  const bFull = round.rosterB.length >= SLOTS_PER_DRAFTER;
-  if (!aFull && !bFull) return null;
-  const fullSide: DrafterSlot = aFull ? "A" : "B";
-  const receiver = other(fullSide);
-
-  const budget = receiver === "A" ? round.budgetA : round.budgetB;
-  const price = Math.min(1, budget);
-  const card = { ...item, price };
-
-  let rosterA = round.rosterA;
-  let rosterB = round.rosterB;
-  let budgetA = round.budgetA;
-  let budgetB = round.budgetB;
-
-  if (receiver === "A") {
-    rosterA = [...rosterA, card];
-    budgetA -= price;
-  } else {
-    rosterB = [...rosterB, card];
-    budgetB -= price;
-  }
-
-  const log = [
-    `${receiver === "A" ? "Team A" : "Team B"} bekommt "${item.name}" automatisch für ${price}$ (Team ${fullSide} ist voll)`,
-    ...round.log,
-  ];
-
-  return finishItemAndAdvance(state, { ...round, rosterA, rosterB, budgetA, budgetB, log });
 }
 
 // --- Computer-Einschätzung ---------------------------------------------

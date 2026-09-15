@@ -13,7 +13,6 @@ import {
   placeOpeningBid,
   playAgain as playAgainState,
   raiseBid,
-  resolveAutoAward,
   startRound as startRoundState,
 } from "@/lib/game/engine";
 import type { DrafterSlot } from "@/lib/game/types";
@@ -128,27 +127,8 @@ export function useZwanniRoom() {
     raiseBid: (drafter: DrafterSlot, amount: number) =>
       withRoom((state) => raiseBid(state, drafter, amount)),
     acceptBid: (drafter: DrafterSlot) => withRoom((state) => acceptBid(state, drafter)),
-    continueAutoAward: () => withRoom((state) => resolveAutoAward(state)),
     playAgain: () => withRoom((state) => playAgainState(state), "waiting"),
   };
-
-  // Wenn eine Seite schon 4 Karten hat, vergibt die Engine die
-  // restlichen Karten der Runde automatisch - aber eine nach der
-  // anderen (current wird dazwischen kurz `null`), damit man live
-  // mitverfolgen kann, wie die Runde zu Ende geht, statt dass sie
-  // abrupt abbricht. Dieser Effekt stößt jeden Schritt selbst an.
-  const round = room?.game_state.round;
-  const awaitingAutoAward =
-    room?.game_state.phase === "drafting" && Boolean(round) && round?.current === null;
-
-  useEffect(() => {
-    if (!awaitingAutoAward) return;
-    const timer = setTimeout(() => {
-      void actions.continueAutoAward();
-    }, 900);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [awaitingAutoAward, round?.position]);
 
   return {
     screen,
