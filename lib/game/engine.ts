@@ -360,32 +360,49 @@ export function resolveAutoAward(state: GameState): GameState | null {
 
 // --- Computer-Einschätzung ---------------------------------------------
 
-/** Stärke-Einstufung, die eine Karte bekommt, wenn für sie keine
- *  eigene `rank` hinterlegt ist - abgeleitet aus dem `weak`-Flag.
- *  Beide Werte sind auf der versteckten 0-100-Skala. */
-const FALLBACK_RANK_STRONG = 65;
-const FALLBACK_RANK_WEAK = 25;
+/** Wandelt einen Text in eine stabile Zahl von 0 bis 999 um - gleicher
+ *  Text ergibt immer dieselbe Zahl, aber schon eine kleine Änderung
+ *  im Text ergibt eine ganz andere Zahl. Nur dafür gedacht, jeder
+ *  Karte eine feste, aber "zufällig wirkende" versteckte Punktzahl
+ *  zu geben (siehe hiddenRank) - kein echter Zufall, aber auch keine
+ *  Reihen-/Musterbildung, die man durchschauen könnte. */
+function stableSpread(text: string): number {
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return hash % 1000;
+}
 
-/** Die versteckte Stärke einer Karte (0 = schwächste, 100 =
- *  stärkste). Die Spieler sehen diesen Wert nie - er wird nur für
- *  `auctioneerVerdict` gebraucht. */
-function hiddenRank(card: DraftedCard): number {
+/** Die versteckte Stärke-Punktzahl einer Karte (0 = schwächste, 100 =
+ *  stärkste). Die Spieler sehen diesen Wert nie - weder während der
+ *  Auktion noch danach - er wird nur für `auctioneerVerdict`
+ *  gebraucht. Ist bei einer Karte ein eigener `rank` hinterlegt (für
+ *  spätere, von Hand fein abgestimmte Kategorien), wird der
+ *  verwendet. Ohne eigenen Wert wird die Punktzahl aus dem
+ *  Kartennamen abgeleitet: stabil (dieselbe Karte hat also immer
+ *  dieselbe versteckte Stärke), aber über viele unterschiedliche
+ *  Werte gestreut statt nur "schwach" oder "stark" - "weak"-Karten
+ *  liegen dabei immer im unteren Bereich. */
+function hiddenRank(categoryId: string, card: DraftedCard): number {
   if (typeof card.rank === "number") return card.rank;
-  return card.weak ? FALLBACK_RANK_WEAK : FALLBACK_RANK_STRONG;
+  const spread = stableSpread(`${categoryId}:${card.name}`) % 61; // 0..60
+  return card.weak ? 5 + (spread % 25) : 40 + spread; // weak: 5-29, stark: 40-100
 }
 
 /** Der "Computer-Verdikt": jede gedraftete Karte hat im Hintergrund
- *  eine versteckte Stärke-Einstufung (0-100), die kein Spieler zu
+ *  eine versteckte Stärke-Punktzahl (0-100), die kein Spieler zu
  *  sehen bekommt - weder während der Auktion noch danach. Am Ende
  *  der Runde bildet der Computer pro Team den Durchschnitt dieser
- *  Einstufungen und rechnet die Differenz in ein Prozent-Ergebnis
- *  um (reine Mathematik, kein echtes KI-Urteil, kein
- *  Netzwerkzugriff nötig) - so, als würden beide Teams in einem
- *  gedachten Kopf-an-Kopf-Duell gegeneinander antreten. Der gezahlte
- *  Preis spielt bewusst KEINE Rolle. Ergebnis liegt immer zwischen
- *  10 und 90, damit es nie komplett eindeutig (0:100) wirkt. Das
- *  Ergebnis dieser Funktion entscheidet direkt, wer als Sieger gilt
- *  (siehe ResultsScreen). */
+ *  Punktzahlen (aufsummiert über die 4 Karten, bis jede Seite ihre 4
+ *  Karten hat) und rechnet die Differenz in ein Prozent-Ergebnis um
+ *  (reine Mathematik, kein echtes KI-Urteil, kein Netzwerkzugriff
+ *  nötig) - so, als würden beide Teams in einem gedachten
+ *  Kopf-an-Kopf-Duell gegeneinander antreten. Der gezahlte Preis
+ *  spielt bewusst KEINE Rolle. Ergebnis liegt immer zwischen 10 und
+ *  90, damit es nie komplett eindeutig (0:100) wirkt. Das Ergebnis
+ *  dieser Funktion entscheidet direkt, wer als Sieger gilt (siehe
+ *  ResultsScreen). */
 export function auctioneerVerdict(state: GameState): { a: number; b: number } {
   const round = state.round;
   if (!round || round.rosterA.length === 0 || round.rosterB.length === 0) {
@@ -393,7 +410,7 @@ export function auctioneerVerdict(state: GameState): { a: number; b: number } {
   }
 
   const average = (cards: DraftedCard[]) =>
-    cards.reduce((sum, card) => sum + hiddenRank(card), 0) / cards.length;
+    cards.reduce((sum, card) => sum + hiddenRank(round.categoryId, card), 0) / cards.length;
 
   const avgA = average(round.rosterA);
   const avgB = average(round.rosterB);
