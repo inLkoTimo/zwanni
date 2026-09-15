@@ -201,7 +201,11 @@ function BidInput({
         value={Math.min(Math.max(amount, min), max)}
         min={min}
         max={max}
-        onChange={(e) => setAmount(() => Number(e.target.value))}
+        onChange={(e) => {
+          const raw = Number(e.target.value);
+          const clamped = Number.isFinite(raw) ? Math.min(Math.max(raw, min), max) : min;
+          setAmount(() => clamped);
+        }}
         className="flex-1 text-center rounded-lg bg-foreground/5 border border-foreground/20 py-2 text-lg outline-none focus:border-gold w-0"
       />
       <button
@@ -242,7 +246,20 @@ export function DraftScreen({
   if (!round) return null;
 
   const current = round.current;
-  const item = current ? round.items[round.position] : null;
+  const item = round.position < round.items.length ? round.items[round.position] : null;
+
+  // Wenn current null ist, obwohl die Runde noch läuft, heißt das:
+  // eine Seite hat schon 4 Karten und kann nicht mehr mitbieten -
+  // die aktuelle Karte wird gerade automatisch vergeben.
+  const awaitingAutoAward = !current && item;
+  const fullSide: DrafterSlot | null = !awaitingAutoAward
+    ? null
+    : round.rosterA.length >= 4
+      ? "A"
+      : round.rosterB.length >= 4
+        ? "B"
+        : null;
+  const autoReceiver: DrafterSlot | null = fullSide ? (fullSide === "A" ? "B" : "A") : null;
 
   return (
     <main className="min-h-dvh p-4 sm:p-6 flex flex-col items-center">
@@ -268,6 +285,14 @@ export function DraftScreen({
             </div>
           )}
         </div>
+
+        {awaitingAutoAward && fullSide && autoReceiver && (
+          <p className="text-center text-sm text-gold animate-pulse">
+            Team {fullSide === "A" ? teamName(room.game_state, "A") : teamName(room.game_state, "B")}{" "}
+            hat schon 4 Karten – diese Karte geht automatisch an{" "}
+            {autoReceiver === "A" ? teamName(room.game_state, "A") : teamName(room.game_state, "B")}…
+          </p>
+        )}
 
         {myRole === "spectator" && (
           <p className="text-center text-foreground/50 text-sm">Du schaust zu.</p>

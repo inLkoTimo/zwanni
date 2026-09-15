@@ -10,6 +10,7 @@ import {
   placeOpeningBid,
   playAgain,
   raiseBid,
+  resolveAutoAward,
   startRound,
 } from "../lib/game/engine";
 import { SLOTS_PER_DRAFTER, STARTING_BUDGET } from "../lib/game/constants";
@@ -51,11 +52,23 @@ test("a full round: bidding, autofill, computer verdict", () => {
   assert.equal(state.round?.budgetB, STARTING_BUDGET - 8);
 
   // Restliche Karten reihum einfach ans jeweils höchste Gebot vergeben,
-  // bis eine Seite ihre 4 Slots voll hat.
+  // bis eine Seite ihre 4 Slots voll hat. Danach vergibt die Engine
+  // die restlichen Karten automatisch, aber eine nach der anderen
+  // (current wird dazwischen kurz null) - das simulieren wir hier
+  // über wiederholte resolveAutoAward-Aufrufe, statt dass die Runde
+  // sofort beim ersten vollen Team endet.
   let guard = 0;
+  let sawAutoAwardGap = false;
   while (state.phase === "drafting" && guard < 20) {
     guard += 1;
-    const current = state.round!.current!;
+    const current = state.round!.current;
+    if (!current) {
+      sawAutoAwardGap = true;
+      const next = resolveAutoAward(state);
+      assert.ok(next, "resolveAutoAward sollte etwas zu tun haben");
+      state = next!;
+      continue;
+    }
     state = placeOpeningBid(state, current.opener, 1);
     const other = current.opener === "A" ? "B" : "A";
     state = acceptBid(state, other);
@@ -64,8 +77,12 @@ test("a full round: bidding, autofill, computer verdict", () => {
   assert.equal(state.phase, "finished");
   const a: number = state.round!.rosterA.length;
   const b: number = state.round!.rosterB.length;
-  assert.ok(a === SLOTS_PER_DRAFTER || b === SLOTS_PER_DRAFTER);
+  // Die Runde endet erst, wenn BEIDE Seiten ihre 4 Slots voll haben -
+  // nicht schon, sobald eine Seite so weit ist.
+  assert.equal(a, SLOTS_PER_DRAFTER);
+  assert.equal(b, SLOTS_PER_DRAFTER);
   assert.equal(a + b, 8);
+  assert.ok(sawAutoAwardGap, "Runde sollte über eine automatische Vergabe geendet haben");
 
   const verdict = auctioneerVerdict(state);
   assert.ok(verdict.a >= 10 && verdict.a <= 90);

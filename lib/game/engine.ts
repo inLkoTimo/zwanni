@@ -10,12 +10,17 @@
 //    eröffnen ("opener"), bietet mindestens 1. Der andere erhöht
 //    oder nimmt das Gebot an ("zuschlagen") - dann geht die Karte
 //    für diesen Preis an den Höchstbietenden.
-// 3. Sobald ein Drafter 4 Karten hat, gehen alle restlichen Karten
-//    automatisch für 1 (bzw. 0, wenn kein Geld mehr da ist) an den
-//    anderen Drafter.
+// 3. Sobald EIN Drafter 4 Karten hat, kann diese Seite nicht mehr
+//    mitbieten - die restlichen Karten gehen nacheinander (eine
+//    nach der anderen, nicht alle auf einmal) automatisch für 1$
+//    (bzw. 0$, wenn kein Geld mehr da ist) an den anderen Drafter.
+//    Die Runde endet erst, wenn WIRKLICH alle Karten vergeben sind -
+//    also wenn am Ende beide Drafter 4 Karten haben.
 // 4. Danach schätzt der Computer (kein echtes KI-Urteil, siehe
-//    computerVerdict weiter unten), wer bei einem gedachten
-//    Kopf-an-Kopf-Duell der beiden Teams gewinnen würde.
+//    auctioneerVerdict weiter unten), wer bei einem gedachten
+//    Kopf-an-Kopf-Duell der beiden Teams gewinnen würde. Dafür hat
+//    jede Karte eine versteckte Stärke-Einstufung, die die Spieler
+//    nie zu sehen bekommen.
 
 import { CATEGORIES, categoryById, type CategoryItem } from "./categories";
 import { ITEMS_PER_ROUND, SLOTS_PER_DRAFTER, STARTING_BUDGET } from "./constants";
@@ -280,18 +285,23 @@ function finishItemAndAdvance(state: GameState, round: RoundState): GameState {
   const aFull = round.rosterA.length >= SLOTS_PER_DRAFTER;
   const bFull = round.rosterB.length >= SLOTS_PER_DRAFTER;
 
-  if (aFull || bFull) {
-    return finishRoundAutofill(state, { ...round, position: nextPosition }, aFull ? "A" : "B");
-  }
-
   if (nextPosition >= round.items.length) {
-    // Sollte durch die 4er-Grenze eigentlich nie passieren, aber
-    // sicherheitshalber trotzdem sauber beenden.
+    // Wirklich alle Karten vergeben (beide Seiten haben ihre 4
+    // Slots voll) - jetzt erst endet die Runde.
     return {
       ...state,
       phase: "finished",
       round: { ...round, position: nextPosition, current: null },
     };
+  }
+
+  if (aFull || bFull) {
+    // Eine Seite ist schon voll und kann nicht mehr mitbieten - die
+    // nächste Karte wird automatisch vergeben (siehe
+    // resolveAutoAward), eine nach der anderen, statt alle auf
+    // einmal. `current: null` heißt "wartet auf automatische
+    // Vergabe".
+    return { ...state, round: { ...round, position: nextPosition, current: null } };
   }
 
   return {
@@ -304,81 +314,91 @@ function finishItemAndAdvance(state: GameState, round: RoundState): GameState {
   };
 }
 
-/** Ein Drafter hat sein 4. Slot voll - der Rest der Runde geht
- *  automatisch (ohne weitere Gebote) an den anderen, für 1$ pro
- *  Karte (0$, falls kein Budget mehr übrig ist). */
-function finishRoundAutofill(
-  state: GameState,
-  round: RoundState,
-  fullSide: DrafterSlot,
-): GameState {
+/** Eine Seite hat ihre 4 Slots voll und kann nicht mehr mitbieten -
+ *  diese Funktion vergibt GENAU EINE weitere Karte automatisch an
+ *  die andere Seite (für 1$, bzw. 0$ ohne Budget) und geht dann zur
+ *  nächsten Karte über. Wird vom Client wiederholt aufgerufen
+ *  (einmal pro Karte), damit man live mitverfolgen kann, wie die
+ *  Runde zu Ende geht, statt dass sie abrupt abbricht. Gibt `null`
+ *  zurück, wenn gerade keine automatische Vergabe ansteht. */
+export function resolveAutoAward(state: GameState): GameState | null {
+  if (state.phase !== "drafting" || !state.round || state.round.current !== null) return null;
+  const round = state.round;
+  const item = round.items[round.position];
+  if (!item) return null;
+
+  const aFull = round.rosterA.length >= SLOTS_PER_DRAFTER;
+  const bFull = round.rosterB.length >= SLOTS_PER_DRAFTER;
+  if (!aFull && !bFull) return null;
+  const fullSide: DrafterSlot = aFull ? "A" : "B";
   const receiver = other(fullSide);
+
+  const budget = receiver === "A" ? round.budgetA : round.budgetB;
+  const price = Math.min(1, budget);
+  const card = { ...item, price };
+
   let rosterA = round.rosterA;
   let rosterB = round.rosterB;
   let budgetA = round.budgetA;
   let budgetB = round.budgetB;
-  const log = [...round.log];
 
-  for (let i = round.position; i < round.items.length; i += 1) {
-    const item = round.items[i];
-    const budget = receiver === "A" ? budgetA : budgetB;
-    const price = Math.min(1, budget);
-    const card = { ...item, price };
-
-    if (receiver === "A") {
-      rosterA = [...rosterA, card];
-      budgetA -= price;
-    } else {
-      rosterB = [...rosterB, card];
-      budgetB -= price;
-    }
-
-    log.unshift(
-      `${receiver === "A" ? "Team A" : "Team B"} bekommt "${item.name}" automatisch für ${price}$ (Team ${fullSide} ist voll)`,
-    );
+  if (receiver === "A") {
+    rosterA = [...rosterA, card];
+    budgetA -= price;
+  } else {
+    rosterB = [...rosterB, card];
+    budgetB -= price;
   }
 
-  return {
-    ...state,
-    phase: "finished",
-    round: {
-      ...round,
-      position: round.items.length,
-      current: null,
-      rosterA,
-      rosterB,
-      budgetA,
-      budgetB,
-      log,
-    },
-  };
+  const log = [
+    `${receiver === "A" ? "Team A" : "Team B"} bekommt "${item.name}" automatisch für ${price}$ (Team ${fullSide} ist voll)`,
+    ...round.log,
+  ];
+
+  return finishItemAndAdvance(state, { ...round, rosterA, rosterB, budgetA, budgetB, log });
 }
 
 // --- Computer-Einschätzung ---------------------------------------------
 
-/** Der "Computer-Verdikt": ein Prozent-Ergebnis, das aus der reinen
- *  Teamstärke berechnet wird (kein echtes KI-Urteil, kein
- *  Netzwerkzugriff nötig) - so, als würden beide Teams gegeneinander
- *  antreten. Der gezahlte Preis spielt bewusst KEINE Rolle - nur ob
- *  eine Karte eine "starke" oder eine "weak"-Karte ist (bekannt, aber
- *  nicht wegen Top-Leistung) zählt. Ergebnis liegt immer zwischen 10
- *  und 90, damit es nie komplett eindeutig (0:100) wirkt. Das
+/** Stärke-Einstufung, die eine Karte bekommt, wenn für sie keine
+ *  eigene `rank` hinterlegt ist - abgeleitet aus dem `weak`-Flag.
+ *  Beide Werte sind auf der versteckten 0-100-Skala. */
+const FALLBACK_RANK_STRONG = 65;
+const FALLBACK_RANK_WEAK = 25;
+
+/** Die versteckte Stärke einer Karte (0 = schwächste, 100 =
+ *  stärkste). Die Spieler sehen diesen Wert nie - er wird nur für
+ *  `auctioneerVerdict` gebraucht. */
+function hiddenRank(card: DraftedCard): number {
+  if (typeof card.rank === "number") return card.rank;
+  return card.weak ? FALLBACK_RANK_WEAK : FALLBACK_RANK_STRONG;
+}
+
+/** Der "Computer-Verdikt": jede gedraftete Karte hat im Hintergrund
+ *  eine versteckte Stärke-Einstufung (0-100), die kein Spieler zu
+ *  sehen bekommt - weder während der Auktion noch danach. Am Ende
+ *  der Runde bildet der Computer pro Team den Durchschnitt dieser
+ *  Einstufungen und rechnet die Differenz in ein Prozent-Ergebnis
+ *  um (reine Mathematik, kein echtes KI-Urteil, kein
+ *  Netzwerkzugriff nötig) - so, als würden beide Teams in einem
+ *  gedachten Kopf-an-Kopf-Duell gegeneinander antreten. Der gezahlte
+ *  Preis spielt bewusst KEINE Rolle. Ergebnis liegt immer zwischen
+ *  10 und 90, damit es nie komplett eindeutig (0:100) wirkt. Das
  *  Ergebnis dieser Funktion entscheidet direkt, wer als Sieger gilt
  *  (siehe ResultsScreen). */
 export function auctioneerVerdict(state: GameState): { a: number; b: number } {
   const round = state.round;
-  if (!round) return { a: 50, b: 50 };
+  if (!round || round.rosterA.length === 0 || round.rosterB.length === 0) {
+    return { a: 50, b: 50 };
+  }
 
-  const score = (cards: DraftedCard[]) =>
-    cards.reduce((sum, card) => sum + (card.weak ? -1 : 2), 0);
+  const average = (cards: DraftedCard[]) =>
+    cards.reduce((sum, card) => sum + hiddenRank(card), 0) / cards.length;
 
-  const scoreA = Math.max(0, score(round.rosterA));
-  const scoreB = Math.max(0, score(round.rosterB));
-  const total = scoreA + scoreB;
+  const avgA = average(round.rosterA);
+  const avgB = average(round.rosterB);
 
-  if (total === 0) return { a: 50, b: 50 };
-
-  const rawA = Math.round((scoreA / total) * 100);
+  const rawA = Math.round(50 + (avgA - avgB) * 0.6);
   const a = Math.min(90, Math.max(10, rawA));
   return { a, b: 100 - a };
 }

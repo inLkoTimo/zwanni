@@ -25,6 +25,13 @@ export type CategoryItem = {
   /** Bekannt, aber im Vergleich schwächer/unbeliebter - zählt beim
    *  Computer-Urteil am Ende weniger. */
   weak?: boolean;
+  /** Versteckte Stärke-Einstufung von 0 (schwächste) bis 100
+   *  (stärkste), die den Spielern NIE angezeigt wird - nur die
+   *  Computer-Einschätzung am Ende rechnet damit (siehe
+   *  auctioneerVerdict in engine.ts). Ist bei einer Karte kein
+   *  eigener Wert hinterlegt, wird automatisch aus `weak`
+   *  abgeleitet. */
+  rank?: number;
   /** Überschreibt das Kategorie-Emoji für diese eine Karte. */
   emoji?: string;
   /** Optional: URL zu einem echten Bild, überschreibt das Emoji. */

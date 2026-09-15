@@ -83,8 +83,9 @@ export function ResultsScreen({
             </span>
           </div>
           <p className="text-xs text-foreground/40 text-center pt-1">
-            Einschätzung des Computers – berechnet nur aus der Teamstärke (Gebote zählen
-            nicht mit), keine echte KI-Einschätzung.
+            Einschätzung des Computers – jede Karte hat eine versteckte Stärke-Wertung, die
+            niemand sieht; das Ergebnis ist reine Mathematik daraus (Gebote zählen nicht mit,
+            keine echte KI-Einschätzung).
           </p>
         </div>
 
