@@ -256,7 +256,7 @@ export function DraftScreen({
   const item = current ? round.items[round.position] : null;
 
   return (
-    <main className="min-h-dvh p-4 sm:p-6 flex flex-col items-center">
+    <main className="w-full py-4 sm:py-6 flex flex-col items-center">
       <div className="w-full max-w-2xl space-y-5">
         <div className="text-center space-y-1">
           <p className="text-xs uppercase tracking-wide text-foreground/60">

@@ -7,8 +7,10 @@ import {
   addParticipant,
   auctioneerVerdict,
   forfeitOpening,
+  MAX_CHAT_MESSAGES,
   placeOpeningBid,
   playAgain,
+  postChatMessage,
   raiseBid,
   startRound,
 } from "../lib/game/engine";
@@ -83,9 +85,72 @@ test("a full round: bidding, autofill, computer verdict", () => {
   assert.ok(verdict.a >= 10 && verdict.a <= 90);
   assert.equal(verdict.a + verdict.b, 100);
 
+  // Die Einschätzung muss IM Spielstand stehen (nicht bei jedem Gerät
+  // neu gerechnet werden) - nur so sehen alle dieselbe Prozentzahl.
+  assert.deepEqual(state.round!.verdict, verdict);
+
+  // Ebenso müssen die gezogenen Karten ihre versteckte Stärke und ihr
+  // Emoji fest mitgespeichert haben.
+  for (const card of [...state.round!.rosterA, ...state.round!.rosterB]) {
+    assert.equal(typeof card.rank, "number", `rank fehlt bei "${card.name}"`);
+    assert.equal(typeof card.emoji, "string", `emoji fehlt bei "${card.name}"`);
+  }
+
   state = playAgain(state);
   assert.equal(state.phase, "lobby");
   assert.equal(state.round, null);
+});
+
+test("die Einschätzung haengt nicht von der lokalen Kategorien-Liste ab", () => {
+  let state = createInitialState("host", "Timo");
+  state = addParticipant(state, { id: "guest", name: "Alex" });
+  state = startRound(state, "tiere", seededRng(11));
+
+  let guard = 0;
+  while (state.phase === "drafting" && guard < 20) {
+    guard += 1;
+    const current = state.round!.current!;
+    state = placeOpeningBid(state, current.opener, 1);
+    if (!current.solo) {
+      state = acceptBid(state, current.opener === "A" ? "B" : "A");
+    }
+  }
+
+  const stored = state.round!.verdict!;
+
+  // Simuliert ein Gerät mit einer ganz anderen Kategorien-Liste:
+  // Kategorie-Id, die es nirgends gibt. Das Ergebnis muss trotzdem
+  // exakt gleich bleiben, weil es gespeichert ist.
+  const asIfOtherDevice = {
+    ...state,
+    round: { ...state.round!, categoryId: "gibt-es-nicht" },
+  };
+  assert.deepEqual(auctioneerVerdict(asIfOtherDevice), stored);
+});
+
+test("chat: nachrichten anhaengen, leeres ignorieren, deckel bei 60", () => {
+  let state = createInitialState("host", "Timo");
+  state = addParticipant(state, { id: "guest", name: "Alex" });
+
+  state = postChatMessage(state, "Timo", "Hallo!")!;
+  assert.equal(state.chat?.length, 1);
+  assert.equal(state.chat?.[0].text, "Hallo!");
+  assert.equal(state.chat?.[0].name, "Timo");
+
+  // Leere Nachrichten werden ignoriert (null = nichts tun).
+  assert.equal(postChatMessage(state, "Timo", "   "), null);
+
+  // Der Verlauf ist gedeckelt, damit der Spielstand nicht endlos waechst.
+  for (let i = 0; i < MAX_CHAT_MESSAGES + 10; i += 1) {
+    state = postChatMessage(state, "Alex", `Nachricht ${i}`)!;
+  }
+  assert.equal(state.chat?.length, MAX_CHAT_MESSAGES);
+  assert.equal(state.chat?.[MAX_CHAT_MESSAGES - 1].text, `Nachricht ${MAX_CHAT_MESSAGES + 9}`);
+
+  // Chat bleibt ueber eine neue Runde hinweg erhalten.
+  state = startRound(state, "tiere", seededRng(5));
+  state = playAgain(state);
+  assert.equal(state.chat?.length, MAX_CHAT_MESSAGES);
 });
 
 test("forfeiting an opening gives the card away for free", () => {

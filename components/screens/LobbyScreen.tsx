@@ -47,7 +47,7 @@ export function LobbyScreen({
   };
 
   return (
-    <main className="min-h-dvh p-6 flex flex-col items-center">
+    <main className="w-full py-6 flex flex-col items-center">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <p className="text-sm text-foreground/60">Raum-Code</p>

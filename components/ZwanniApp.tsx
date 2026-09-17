@@ -12,11 +12,12 @@ import {
 import { LobbyScreen } from "./screens/LobbyScreen";
 import { DraftScreen } from "./screens/DraftScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
+import { ChatPanel } from "./ChatPanel";
 
 /** Verteilt nur auf die einzelnen Bildschirme - die Logik steckt in
  *  `useZwanniRoom`, die Spielregeln in `lib/game`. */
 export function ZwanniApp() {
-  const { screen, setScreen, room, roomError, myRole, identity, loading, error, setError, prefillCode, actions } =
+  const { screen, setScreen, room, chat, roomError, me, myRole, identity, loading, error, setError, prefillCode, actions } =
     useZwanniRoom();
 
   const [name, setName] = useState("");
@@ -75,8 +76,8 @@ export function ZwanniApp() {
 
   const phase = room.game_state.phase;
 
-  if (phase === "lobby") {
-    return (
+  const gameScreen =
+    phase === "lobby" ? (
       <LobbyScreen
         room={room}
         myRole={myRole}
@@ -84,11 +85,7 @@ export function ZwanniApp() {
         loading={loading}
         error={error}
       />
-    );
-  }
-
-  if (phase === "drafting") {
-    return (
+    ) : phase === "drafting" ? (
       <DraftScreen
         room={room}
         myRole={myRole}
@@ -99,15 +96,25 @@ export function ZwanniApp() {
         loading={loading}
         error={error}
       />
+    ) : (
+      <ResultsScreen
+        room={room}
+        canPlayAgain={myRole === "A" || myRole === "B"}
+        onPlayAgain={() => void actions.playAgain()}
+        loading={loading}
+      />
     );
-  }
 
+  // Der Chat läuft unter dem Spiel durch - in jeder Phase (Lobby,
+  // Auktion, Ergebnis) und für alle im Raum, auch für Zuschauer.
   return (
-    <ResultsScreen
-      room={room}
-      canPlayAgain={myRole === "A" || myRole === "B"}
-      onPlayAgain={() => void actions.playAgain()}
-      loading={loading}
-    />
+    <div className="min-h-dvh flex flex-col items-center px-4 pb-8">
+      {gameScreen}
+      <ChatPanel
+        messages={chat}
+        canWrite={Boolean(me)}
+        onSend={(text) => void actions.sendChatMessage(text)}
+      />
+    </div>
   );
 }

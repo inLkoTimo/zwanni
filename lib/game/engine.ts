@@ -23,17 +23,35 @@
 //    Kopf-an-Kopf-Duell der beiden Teams gewinnen würde. Dafür hat
 //    jede Karte eine versteckte Stärke-Einstufung, die die Spieler
 //    nie zu sehen bekommen.
+//
+// WICHTIG für "alle sehen dasselbe": Alles, was angezeigt oder
+// ausgerechnet wird, steckt im gespeicherten Spielstand - die
+// versteckte Stärke und das Emoji werden beim Ziehen fest an die
+// Karte geschrieben, und die Prozent-Einschätzung wird einmal am
+// Rundenende berechnet und gespeichert. Kein Gerät rechnet also
+// selbst etwas aus, das bei ihm anders herauskommen könnte, nur
+// weil dort gerade eine ältere Version der Kategorien-Liste
+// geladen ist.
 
 import { CATEGORIES, categoryById, type CategoryItem } from "./categories";
 import { ITEMS_PER_ROUND, SLOTS_PER_DRAFTER, STARTING_BUDGET } from "./constants";
 import type {
+  ChatMessage,
   CurrentAuction,
   DraftedCard,
   DrafterSlot,
   GameState,
   Participant,
   RoundState,
+  Verdict,
 } from "./types";
+
+/** So viele Chat-Nachrichten werden pro Raum aufgehoben - ältere
+ *  fallen hinten raus, damit der Spielstand nicht endlos wächst. */
+export const MAX_CHAT_MESSAGES = 60;
+
+/** Längenbegrenzung für eine einzelne Chat-Nachricht. */
+export const MAX_CHAT_LENGTH = 300;
 
 export class GameError extends Error {}
 
@@ -113,10 +131,18 @@ export function startRound(
     fail("Unbekannte Kategorie.");
   }
 
-  const items: CategoryItem[] = shuffled(category.items, rng).slice(
-    0,
-    ITEMS_PER_ROUND,
-  );
+  // Die gezogenen Karten bekommen ihre versteckte Stärke und ihr
+  // Emoji hier fest mitgegeben und werden so im Spielstand
+  // gespeichert. Dadurch sehen und rechnen später alle Geräte mit
+  // exakt denselben Werten - auch wenn auf einem Gerät noch eine
+  // ältere Version der Kategorien-Liste im Browser steckt.
+  const items: CategoryItem[] = shuffled(category.items, rng)
+    .slice(0, ITEMS_PER_ROUND)
+    .map((item) => ({
+      ...item,
+      rank: item.rank ?? rankFromListPosition(category.items, item.name, item.weak),
+      emoji: item.emoji ?? category.emoji,
+    }));
 
   const round: RoundState = {
     categoryId: category.id,
@@ -309,11 +335,14 @@ function finishItemAndAdvance(state: GameState, round: RoundState): GameState {
 
   if (nextPosition >= round.items.length) {
     // Wirklich alle Karten vergeben (beide Seiten haben ihre 4
-    // Slots voll) - jetzt erst endet die Runde.
+    // Slots voll) - jetzt erst endet die Runde. Die Einschätzung
+    // wird genau hier EINMAL berechnet und mitgespeichert, damit
+    // alle Geräte dieselbe Prozentzahl anzeigen.
+    const finished: RoundState = { ...round, position: nextPosition, current: null };
     return {
       ...state,
       phase: "finished",
-      round: { ...round, position: nextPosition, current: null },
+      round: { ...finished, verdict: computeVerdict(finished) },
     };
   }
 
@@ -329,50 +358,53 @@ function finishItemAndAdvance(state: GameState, round: RoundState): GameState {
 
 // --- Computer-Einschätzung ---------------------------------------------
 
-/** Die versteckte Stärke-Punktzahl einer Karte (0 = schwächste, 100 =
- *  stärkste). Die Spieler sehen diesen Wert nie - weder während der
- *  Auktion noch danach - er wird nur für `auctioneerVerdict`
- *  gebraucht.
+/** Leitet die versteckte Stärke-Punktzahl (0 = schwächste, 100 =
+ *  stärkste) aus der Position einer Karte in ihrer Kategorien-Liste
+ *  ab. Die Listen in categories.ts sind von Anfang an nach
+ *  Bekanntheit/Stärke sortiert (die stärksten Einträge zuerst, die
+ *  "weak"-Karten ganz am Ende) - der erste Eintrag bekommt also die
+ *  höchste Punktzahl, der letzte die niedrigste. Eine echte, von Hand
+ *  gemachte Rangliste, kein Zufall.
  *
- *  Ist bei einer Karte ein eigener `rank` hinterlegt, wird der
- *  verwendet. Ohne eigenen Wert nutzen wir etwas, das schon längst
- *  da ist: die Reihenfolge der Karte in ihrer Kategorien-Liste
- *  (categories.ts) - die ist von Anfang an nach Bekanntheit/Stärke
- *  sortiert (die bekanntesten/stärksten Einträge zuerst, die
- *  "weak"-Karten ganz am Ende). Der erste Eintrag einer Kategorie
- *  bekommt also die höchste Punktzahl, der letzte die niedrigste -
- *  eine echte, von Hand gemachte Rangliste, kein Zufall. */
+ *  Wird nur EINMAL beim Ziehen der Karten aufgerufen (siehe
+ *  startRound) - danach steht der Wert fest in der Karte. */
+function rankFromListPosition(
+  list: CategoryItem[],
+  name: string,
+  weak: boolean | undefined,
+): number {
+  const index = list.findIndex((i) => i.name === name);
+  if (index < 0 || list.length <= 1) {
+    // Sollte eigentlich nicht vorkommen - nur als Absicherung.
+    return weak ? 20 : 65;
+  }
+  const positionInList = index / (list.length - 1); // 0 = erster Eintrag, 1 = letzter
+  return Math.round(95 - positionInList * 75); // 95 (stärkste) bis 20 (schwächste)
+}
+
+/** Die versteckte Stärke einer bereits gedrafteten Karte. Normalfall:
+ *  der Wert steht seit dem Ziehen in der Karte drin. Die Rückfallebene
+ *  greift nur bei Runden, die vor dieser Änderung gestartet wurden. */
 function hiddenRank(categoryId: string, card: DraftedCard): number {
   if (typeof card.rank === "number") return card.rank;
 
   const category = categoryById(categoryId);
-  const index = category?.items.findIndex((i) => i.name === card.name) ?? -1;
-
-  if (!category || index < 0 || category.items.length <= 1) {
-    // Sollte eigentlich nicht vorkommen - nur als Absicherung.
-    return card.weak ? 20 : 65;
-  }
-
-  const positionInList = index / (category.items.length - 1); // 0 = erster Eintrag, 1 = letzter
-  return Math.round(95 - positionInList * 75); // 95 (stärkste) bis 20 (schwächste)
+  if (!category) return card.weak ? 20 : 65;
+  return rankFromListPosition(category.items, card.name, card.weak);
 }
 
-/** Der "Computer-Verdikt": jede gedraftete Karte hat im Hintergrund
- *  eine versteckte Stärke-Punktzahl (0-100), die kein Spieler zu
- *  sehen bekommt - weder während der Auktion noch danach. Am Ende
- *  der Runde bildet der Computer pro Team den Durchschnitt dieser
- *  Punktzahlen (aufsummiert über die 4 Karten, bis jede Seite ihre 4
- *  Karten hat) und rechnet die Differenz in ein Prozent-Ergebnis um
- *  (reine Mathematik, kein echtes KI-Urteil, kein Netzwerkzugriff
- *  nötig) - so, als würden beide Teams in einem gedachten
- *  Kopf-an-Kopf-Duell gegeneinander antreten. Der gezahlte Preis
- *  spielt bewusst KEINE Rolle. Ergebnis liegt immer zwischen 10 und
- *  90, damit es nie komplett eindeutig (0:100) wirkt. Das Ergebnis
- *  dieser Funktion entscheidet direkt, wer als Sieger gilt (siehe
- *  ResultsScreen). */
-export function auctioneerVerdict(state: GameState): { a: number; b: number } {
-  const round = state.round;
-  if (!round || round.rosterA.length === 0 || round.rosterB.length === 0) {
+/** Rechnet die Einschätzung aus einer fertigen Runde aus. Jede Karte
+ *  hat im Hintergrund eine versteckte Stärke-Punktzahl (0-100), die
+ *  kein Spieler zu sehen bekommt - weder während der Auktion noch
+ *  danach. Der Computer bildet pro Team den Durchschnitt dieser
+ *  Punktzahlen über die 4 Karten und rechnet die Differenz in ein
+ *  Prozent-Ergebnis um (reine Mathematik, kein echtes KI-Urteil, kein
+ *  Netzwerkzugriff nötig) - so, als würden beide Teams in einem
+ *  gedachten Kopf-an-Kopf-Duell gegeneinander antreten. Der gezahlte
+ *  Preis spielt bewusst KEINE Rolle. Ergebnis liegt immer zwischen 10
+ *  und 90, damit es nie komplett eindeutig (0:100) wirkt. */
+function computeVerdict(round: RoundState): Verdict {
+  if (round.rosterA.length === 0 || round.rosterB.length === 0) {
     return { a: 50, b: 50 };
   }
 
@@ -385,6 +417,44 @@ export function auctioneerVerdict(state: GameState): { a: number; b: number } {
   const rawA = Math.round(50 + (avgA - avgB) * 0.6);
   const a = Math.min(90, Math.max(10, rawA));
   return { a, b: 100 - a };
+}
+
+/** Das gespeicherte Ergebnis der Computer-Einschätzung. Es wird am
+ *  Rundenende einmal berechnet und im Spielstand abgelegt - hier wird
+ *  es nur noch ausgelesen, damit auf allen Geräten garantiert
+ *  dieselbe Prozentzahl steht. Nur bei alten Runden (noch ohne
+ *  gespeichertes Ergebnis) wird notfalls nachgerechnet. Das Ergebnis
+ *  entscheidet direkt, wer als Sieger gilt (siehe ResultsScreen). */
+export function auctioneerVerdict(state: GameState): Verdict {
+  const round = state.round;
+  if (!round) return { a: 50, b: 50 };
+  if (round.verdict) return round.verdict;
+  return computeVerdict(round);
+}
+
+// --- Chat ---------------------------------------------------------
+
+/** Hängt eine Chat-Nachricht an den Raum-Verlauf an. Gibt `null`
+ *  zurück, wenn nichts zu senden ist (leerer Text) - dann passiert
+ *  einfach nichts. */
+export function postChatMessage(
+  state: GameState,
+  name: string,
+  text: string,
+  now: Date = new Date(),
+): GameState | null {
+  const clean = text.trim().slice(0, MAX_CHAT_LENGTH);
+  if (!clean) return null;
+
+  const message: ChatMessage = {
+    id: `${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: name.trim() || "Jemand",
+    text: clean,
+    at: now.toISOString(),
+  };
+
+  const chat = [...(state.chat ?? []), message].slice(-MAX_CHAT_MESSAGES);
+  return { ...state, chat };
 }
 
 // --- Neue Runde ---------------------------------------------------

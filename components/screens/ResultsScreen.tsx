@@ -47,7 +47,7 @@ export function ResultsScreen({
     verdict.a === verdict.b ? null : verdict.a > verdict.b ? "A" : "B";
 
   return (
-    <main className="relative min-h-dvh p-6 flex flex-col items-center justify-center overflow-hidden">
+    <main className="relative w-full py-10 flex flex-col items-center justify-center overflow-hidden">
       {winner && <Confetti />}
       <div className="w-full max-w-md space-y-6 text-center">
         <p className="text-xs uppercase tracking-wide text-foreground/50">Ergebnis</p>

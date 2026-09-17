@@ -30,10 +30,20 @@ export type CurrentAuction = {
   solo: boolean;
 };
 
+/** Das Ergebnis der Computer-Einschätzung in Prozent (a + b = 100). */
+export type Verdict = {
+  a: number;
+  b: number;
+};
+
 export type RoundState = {
   categoryId: string;
   categoryLabel: string;
-  /** Die 8 gezogenen Karten dieser Runde, in Auktions-Reihenfolge. */
+  /** Die 8 gezogenen Karten dieser Runde, in Auktions-Reihenfolge.
+   *  Jede Karte bekommt beim Ziehen ihre versteckte Stärke (`rank`)
+   *  und ihr Emoji fest mitgegeben - dadurch sehen und rechnen ALLE
+   *  Geräte mit exakt denselben Werten, egal welche Version der
+   *  Kategorien-Liste bei ihnen gerade geladen ist. */
   items: CategoryItem[];
   /** Index der Karte, die gerade dran ist (oder als nächstes drankommt). */
   position: number;
@@ -44,9 +54,22 @@ export type RoundState = {
   rosterB: DraftedCard[];
   /** Kurze Verlaufsmeldungen, neueste zuerst. */
   log: string[];
+  /** Wird EINMAL am Rundenende berechnet und hier gespeichert, damit
+   *  alle Geräte dieselbe Prozentzahl anzeigen. */
+  verdict?: Verdict | null;
 };
 
 export type GamePhase = "lobby" | "drafting" | "finished";
+
+/** Eine Chat-Nachricht im Raum. */
+export type ChatMessage = {
+  id: string;
+  /** Name der Person, die geschrieben hat (Stand: Zeitpunkt der Nachricht). */
+  name: string;
+  text: string;
+  /** Zeitpunkt als ISO-String. */
+  at: string;
+};
 
 export type GameState = {
   version: number;
@@ -55,6 +78,10 @@ export type GameState = {
   drafterAId: string | null;
   drafterBId: string | null;
   round: RoundState | null;
+  /** Chat-Verlauf des Raums, älteste zuerst. Bleibt über Runden
+   *  hinweg bestehen. Bei alten Räumen kann das Feld fehlen - immer
+   *  mit `?? []` lesen. */
+  chat?: ChatMessage[];
 };
 
 export type RoomStatus = "waiting" | "playing" | "finished";

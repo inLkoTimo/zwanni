@@ -30,5 +30,6 @@ export function createInitialState(hostId: string, hostName: string): GameState 
     drafterAId: hostId,
     drafterBId: null,
     round: null,
+    chat: [],
   };
 }

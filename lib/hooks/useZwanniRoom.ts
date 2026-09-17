@@ -12,6 +12,7 @@ import {
   forfeitOpening,
   placeOpeningBid,
   playAgain as playAgainState,
+  postChatMessage,
   raiseBid,
   startRound as startRoundState,
 } from "@/lib/game/engine";
@@ -68,7 +69,13 @@ export function useZwanniRoom() {
       sameRoom && prev!.game_state.phase === "drafting" && room.game_state.phase !== "drafting",
     );
 
-    if (cardJustAwarded || roundJustFinished) {
+    // Schaut gerade niemand hin (Tab im Hintergrund, Handy-Bildschirm
+    // aus), wird nicht verzögert: Browser bremsen dort die Timer aus,
+    // und dieses Gerät würde sonst minutenlang einen alten Stand
+    // anzeigen, während das andere schon weiter ist.
+    const hidden = typeof document !== "undefined" && document.hidden;
+
+    if ((cardJustAwarded || roundJustFinished) && !hidden) {
       const timer = setTimeout(() => setDisplayRoom(room), CARD_REVEAL_DELAY_MS);
       return () => clearTimeout(timer);
     }
@@ -175,12 +182,20 @@ export function useZwanniRoom() {
       withRoom((state) => raiseBid(state, drafter, amount)),
     acceptBid: (drafter: DrafterSlot) => withRoom((state) => acceptBid(state, drafter)),
     playAgain: () => withRoom((state) => playAgainState(state), "waiting"),
+    sendChatMessage: (text: string) =>
+      withRoom((state) => postChatMessage(state, me?.name ?? "Jemand", text)),
   };
+
+  // Der Chat soll sofort ankommen und nicht durch die kurze
+  // Karten-Anzeige-Verzögerung gebremst werden - er liest deshalb
+  // direkt vom aktuellen Stand, nicht vom verzögerten.
+  const chat = room?.game_state.chat ?? [];
 
   return {
     screen,
     setScreen,
     room: displayRoom,
+    chat,
     roomError,
     me,
     myRole,
