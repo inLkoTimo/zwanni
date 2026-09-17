@@ -91,7 +91,7 @@ test("a full round: bidding, autofill, computer verdict", () => {
 test("forfeiting an opening gives the card away for free", () => {
   let state = createInitialState("host", "Timo");
   state = addParticipant(state, { id: "guest", name: "Alex" });
-  state = startRound(state, "autos", seededRng(3));
+  state = startRound(state, "automarken", seededRng(3));
 
   // A ist zuerst dran zu eröffnen, hat aber (Testfall) kein Geld mehr.
   assert.equal(state.round?.current?.opener, "A");
@@ -107,7 +107,7 @@ test("forfeiting an opening gives the card away for free", () => {
 test("cannot bid below minimum or above budget", () => {
   let state = createInitialState("host", "Timo");
   state = addParticipant(state, { id: "guest", name: "Alex" });
-  state = startRound(state, "autos", seededRng(7));
+  state = startRound(state, "automarken", seededRng(7));
 
   assert.throws(() => placeOpeningBid(state, "A", 0));
   assert.throws(() => placeOpeningBid(state, "A", 21));
