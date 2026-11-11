@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { MAX_CHAT_LENGTH } from "@/lib/game/engine";
 import type { ChatMessage } from "@/lib/game/types";
+import { useI18n } from "@/lib/i18n";
 
 /** Der Raum-Chat unter dem Spiel. Läuft über denselben Spielstand wie
  *  das Spiel selbst, also sehen ihn alle im Raum - auch Zuschauer. */
@@ -17,6 +18,7 @@ export function ChatPanel({
   canWrite: boolean;
   onSend: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const [text, setText] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -35,12 +37,12 @@ export function ChatPanel({
 
   return (
     <section className="w-full max-w-2xl mt-6 rounded-2xl border border-foreground/10 bg-black/20">
-      <p className="px-4 pt-3 text-xs uppercase tracking-wide text-foreground/50">Chat</p>
+      <p className="px-4 pt-3 text-xs uppercase tracking-wide text-foreground/50">{t.chat}</p>
 
       <div ref={listRef} className="max-h-48 overflow-y-auto px-4 py-2 space-y-1.5">
         {messages.length === 0 ? (
           <p className="text-sm text-foreground/40 py-2">
-            Noch keine Nachrichten – schreib die erste.
+            {t.noMessages}
           </p>
         ) : (
           messages.map((message) => (
@@ -64,7 +66,7 @@ export function ChatPanel({
               }
             }}
             maxLength={MAX_CHAT_LENGTH}
-            placeholder="Nachricht schreiben…"
+            placeholder={t.writeMessage}
             className="flex-1 min-w-0 rounded-lg bg-foreground/5 border border-foreground/20 px-3 py-2 text-sm outline-none focus:border-gold"
           />
           <button
@@ -72,7 +74,7 @@ export function ChatPanel({
             disabled={!text.trim()}
             className="rounded-lg bg-gold text-black font-bold px-4 py-2 text-sm disabled:opacity-40"
           >
-            Senden
+            {t.send}
           </button>
         </div>
       )}

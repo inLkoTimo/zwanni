@@ -3,6 +3,7 @@
 import { teamAvatarSeed, teamName } from "@/lib/game/display";
 import type { DrafterSlot, RoomRow } from "@/lib/game/types";
 import { auctioneerVerdict } from "@/lib/game/engine";
+import { useI18n } from "@/lib/i18n";
 import { BidderAvatar } from "../BidderAvatar";
 
 const TEAM_CLASS: Record<DrafterSlot, string> = { A: "text-team-a", B: "text-team-b" };
@@ -40,6 +41,7 @@ export function ResultsScreen({
   onPlayAgain: () => void;
   loading: boolean;
 }) {
+  const { t } = useI18n();
   const nameA = teamName(room.game_state, "A");
   const nameB = teamName(room.game_state, "B");
   const verdict = auctioneerVerdict(room.game_state);
@@ -50,7 +52,7 @@ export function ResultsScreen({
     <main className="relative w-full py-10 flex flex-col items-center justify-center overflow-hidden">
       {winner && <Confetti />}
       <div className="w-full max-w-md space-y-6 text-center">
-        <p className="text-xs uppercase tracking-wide text-foreground/50">Ergebnis</p>
+        <p className="text-xs uppercase tracking-wide text-foreground/50">{t.result}</p>
 
         {winner ? (
           <>
@@ -59,16 +61,16 @@ export function ResultsScreen({
               <BidderAvatar seed={teamAvatarSeed(room.game_state, winner)} paddleColor={TEAM_HEX[winner]} size={96} raised />
             </div>
             <p className="text-4xl font-black">
-              <span className={TEAM_CLASS[winner]}>{winner === "A" ? nameA : nameB}</span> gewinnt!
+              <span className={TEAM_CLASS[winner]}>{winner === "A" ? nameA : nameB}</span> {t.wins}
             </p>
           </>
         ) : (
-          <p className="text-4xl font-black text-gold">Kopf an Kopf – 50 : 50!</p>
+          <p className="text-4xl font-black text-gold">{t.tie}</p>
         )}
 
         <div className="rounded-xl border border-gold/30 bg-black/20 p-4 space-y-2 text-left">
           <p className="text-xs uppercase tracking-wide text-gold text-center">
-            🖥️ Wenn beide Teams gegeneinander antreten würden…
+            {t.ifTheyPlayed}
           </p>
           <div className="flex h-3 rounded-full overflow-hidden bg-foreground/10">
             <div className="bg-team-a transition-all" style={{ width: `${verdict.a}%` }} />
@@ -83,9 +85,7 @@ export function ResultsScreen({
             </span>
           </div>
           <p className="text-xs text-foreground/40 text-center pt-1">
-            Einschätzung des Computers – jede Karte hat eine versteckte Stärke-Wertung, die
-            niemand sieht; das Ergebnis ist reine Mathematik daraus (Gebote zählen nicht mit,
-            keine echte KI-Einschätzung).
+            {t.verdictNote}
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export function ResultsScreen({
             onClick={onPlayAgain}
             className="w-full rounded-xl bg-gold text-black font-bold py-3 disabled:opacity-50"
           >
-            Nochmal spielen
+            {t.playAgain}
           </button>
         )}
       </div>

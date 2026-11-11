@@ -4,7 +4,7 @@ import { AuctionHallBackdrop } from "@/components/AuctionHallBackdrop";
 
 export const metadata: Metadata = {
   title: "Zwanni",
-  description: "Das 20$-Auktionsspiel für zwei – live gegeneinander bieten, andere stimmen ab.",
+  description: "Das 20$-Auktionsspiel für zwei – live gegeneinander bieten. The $20 auction game for two – bid live against each other.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

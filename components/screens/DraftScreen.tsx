@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { itemEmoji, categoryById } from "@/lib/game/categories";
+import { itemEmoji } from "@/lib/game/categories";
 import { budgetPercent, teamAvatarSeed, teamName } from "@/lib/game/display";
-import type { DrafterSlot, RoomRow } from "@/lib/game/types";
+import type { DrafterSlot, RoomRow, RoundState } from "@/lib/game/types";
+import { useI18n } from "@/lib/i18n";
 import { BidderAvatar } from "../BidderAvatar";
 import { ItemVisual } from "../ItemVisual";
 
@@ -14,13 +15,14 @@ const TEAM_BG: Record<DrafterSlot, string> = { A: "bg-team-a", B: "bg-team-b" };
 const TEAM_HEX: Record<DrafterSlot, string> = { A: "#ff5d5d", B: "#4da6ff" };
 
 function BudgetBar({ budget }: { budget: number }) {
+  const { t } = useI18n();
   const pct = budgetPercent(budget);
   const color = pct <= 20 ? "bg-team-a" : pct <= 50 ? "bg-gold" : "bg-emerald-400";
   return (
     <div className="space-y-1">
       <p className="text-3xl font-black leading-none">
         {budget}
-        <span className="text-base font-normal text-foreground/50">$ übrig</span>
+        <span className="text-base font-normal text-foreground/50">{t.left}</span>
       </p>
       <div className="h-2 rounded-full bg-foreground/10 overflow-hidden">
         <div className={`h-full ${color} transition-all`} style={{ width: `${pct}%` }} />
@@ -50,6 +52,7 @@ function TeamColumn({
   onChoose: (drafter: DrafterSlot, take: boolean) => void;
   loading: boolean;
 }) {
+  const { t, itemName } = useI18n();
   const round = room.game_state.round!;
   const current = round.current;
   const budget = side === "A" ? round.budgetA : round.budgetB;
@@ -83,7 +86,7 @@ function TeamColumn({
         <BidderAvatar seed={seed} paddleColor={TEAM_HEX[side]} raised={isMyTurn} size={56} />
         <div className="min-w-0">
           <p className={`font-black text-lg truncate ${TEAM_CLASS[side]}`}>{name}</p>
-          {isMe && <span className="text-[10px] uppercase tracking-wide text-foreground/40">Du</span>}
+          {isMe && <span className="text-[10px] uppercase tracking-wide text-foreground/40">{t.you}</span>}
         </div>
       </div>
 
@@ -93,20 +96,20 @@ function TeamColumn({
         <div className="text-sm min-h-[1.25rem]">
           {isLeading && (
             <p key={current.highBid} className={`bid-pulse font-bold ${TEAM_CLASS[side]}`}>
-              Gebot: {current.highBid}$
+              {t.bid}: {current.highBid}$
             </p>
           )}
           {isOpener && !current.solo && !current.choice && (
-            <p className="text-foreground/50">eröffnet gleich…</p>
+            <p className="text-foreground/50">{t.opensSoon}</p>
           )}
           {isOpener && current.choice && (
             <p className="text-gold">
-              {opponentName} hat kein Geld mehr – {isMe ? "du entscheidest" : `${name} entscheidet`}, wer die Karte bekommt.
+              {t.choiceHint(opponentName, isMe ? t.youDecide : t.decides(name))}
             </p>
           )}
           {isOpener && current.solo && (
             <p className="text-gold">
-              {opponentName} hat schon 4 Karten – dein Gebot gewinnt sofort.
+              {t.soloHint(opponentName)}
             </p>
           )}
         </div>
@@ -119,14 +122,14 @@ function TeamColumn({
             onClick={() => onChoose(side, true)}
             className={`w-full rounded-xl ${TEAM_BG[side]} text-black font-bold py-2.5 disabled:opacity-50`}
           >
-            Karte nehmen
+            {t.takeCard}
           </button>
           <button
             disabled={loading}
             onClick={() => onChoose(side, false)}
             className="w-full rounded-xl border border-foreground/30 py-2.5 disabled:opacity-50"
           >
-            {opponentName} geben
+            {t.giveCardTo(opponentName)}
           </button>
         </div>
       )}
@@ -142,22 +145,22 @@ function TeamColumn({
                   onClick={() => onOpen(side, amount)}
                   className={`w-full rounded-xl ${TEAM_BG[side]} text-black font-bold py-2.5 disabled:opacity-50`}
                 >
-                  {current.solo ? "Karte holen" : "Eröffnen"}
+                  {current.solo ? t.grabCard : t.open}
                 </button>
               </>
             ) : (
               <>
                 <p className="text-sm text-foreground/60">
                   {current.solo
-                    ? "Du hast kein Geld mehr übrig – die Karte gehört trotzdem dir."
-                    : "Kein Gebot mehr abgeben – du hast kein Geld mehr übrig."}
+                    ? t.noMoneySolo
+                    : t.noMoneyOpen}
                 </p>
                 <button
                   disabled={loading}
                   onClick={() => onForfeit(side)}
                   className="w-full rounded-xl border border-foreground/30 py-2.5"
                 >
-                  {current.solo ? "Karte kostenlos nehmen" : "Karte kostenlos abgeben"}
+                  {current.solo ? t.takeFree : t.giveFree}
                 </button>
               </>
             )
@@ -171,12 +174,12 @@ function TeamColumn({
                     onClick={() => onRaise(side, amount)}
                     className={`w-full rounded-xl ${TEAM_BG[side]} text-black font-bold py-2.5 disabled:opacity-50`}
                   >
-                    Erhöhen
+                    {t.raise}
                   </button>
                 </>
               ) : (
                 <p className="text-sm text-foreground/60">
-                  Kein Gebot mehr abgeben – nicht genug Geld, um zu erhöhen.
+                  {t.cantRaise}
                 </p>
               )}
               <button
@@ -184,7 +187,7 @@ function TeamColumn({
                 onClick={() => onAccept(side)}
                 className="w-full rounded-xl border border-foreground/30 py-2.5"
               >
-                Kein Gebot mehr abgeben – {opponentName} bekommt die Karte für {current.highBid}$
+                {t.passTo(opponentName, current.highBid)}
               </button>
             </>
           )}
@@ -201,7 +204,7 @@ function TeamColumn({
                 ) : (
                   <span>{itemEmoji(round.categoryId, card)}</span>
                 )}
-                <span className="truncate">{card.name}</span>
+                <span className="truncate">{itemName(card)}</span>
               </span>
               <span className="text-gold shrink-0 pl-2">{card.price}$</span>
             </li>
@@ -274,11 +277,8 @@ export function DraftScreen({
   loading: boolean;
   error: string;
 }) {
+  const { t, itemName, categoryLabel, error: translateError } = useI18n();
   const round = room.game_state.round;
-  const category = useMemo(
-    () => (round ? categoryById(round.categoryId) : undefined),
-    [round],
-  );
 
   if (!round) return null;
 
@@ -290,7 +290,7 @@ export function DraftScreen({
       <div className="w-full max-w-2xl space-y-5">
         <div className="text-center space-y-1">
           <p className="text-xs uppercase tracking-wide text-foreground/60">
-            {category?.label ?? round.categoryLabel} · Los {round.position + 1} / {round.items.length}
+            {categoryLabel(round.categoryId, round.categoryLabel)} · {t.card} {round.position + 1} / {round.items.length}
           </p>
           {item && (
             <div
@@ -305,16 +305,16 @@ export function DraftScreen({
                   emojiClassName="text-6xl leading-none"
                 />
               </div>
-              <p className="text-2xl font-black">{item.name}</p>
+              <p className="text-2xl font-black">{itemName(item)}</p>
             </div>
           )}
         </div>
 
         {myRole === "spectator" && (
-          <p className="text-center text-foreground/50 text-sm">Du schaust zu.</p>
+          <p className="text-center text-foreground/50 text-sm">{t.spectating}</p>
         )}
 
-        {error && <p className="text-team-a text-sm text-center">{error}</p>}
+        {error && <p className="text-team-a text-sm text-center">{translateError(error)}</p>}
 
         <div className="flex flex-col sm:flex-row gap-3">
           <TeamColumn
@@ -344,11 +344,33 @@ export function DraftScreen({
         {round.log.length > 0 && (
           <div className="text-xs text-foreground/40 space-y-1 pt-1">
             {round.log.slice(0, 3).map((entry, i) => (
-              <p key={i}>{entry}</p>
+              <p key={i}>{translateLogEntry(entry, round, t, itemName, categoryLabel)}</p>
             ))}
           </div>
         )}
       </div>
     </main>
   );
+}
+
+/** Die Verlaufsmeldungen werden im Spielstand auf Deutsch gespeichert.
+ *  Hier werden die bekannten Formen in die gewählte Sprache gebracht -
+ *  inklusive Kartenname. Unbekannte Zeilen bleiben, wie sie sind. */
+function translateLogEntry(
+  entry: string,
+  round: RoundState,
+  t: ReturnType<typeof useI18n>["t"],
+  itemName: ReturnType<typeof useI18n>["itemName"],
+  categoryLabel: ReturnType<typeof useI18n>["categoryLabel"],
+): string {
+  if (entry.startsWith("Kategorie: ")) {
+    return t.logCategory(categoryLabel(round.categoryId, round.categoryLabel));
+  }
+  const got = entry.match(/^(Team [AB]) bekommt "(.*)" für (\d+)\$$/);
+  if (got) {
+    const [, team, name, price] = got;
+    const card = round.items.find((i) => i.name === name);
+    return t.logGot(team, card ? itemName(card) : name, Number(price));
+  }
+  return entry;
 }

@@ -13,10 +13,21 @@ import { LobbyScreen } from "./screens/LobbyScreen";
 import { DraftScreen } from "./screens/DraftScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
 import { ChatPanel } from "./ChatPanel";
+import { LanguageProvider, LanguageToggle, useI18n } from "@/lib/i18n";
 
 /** Verteilt nur auf die einzelnen Bildschirme - die Logik steckt in
  *  `useZwanniRoom`, die Spielregeln in `lib/game`. */
 export function ZwanniApp() {
+  return (
+    <LanguageProvider>
+      <LanguageToggle />
+      <ZwanniScreens />
+    </LanguageProvider>
+  );
+}
+
+function ZwanniScreens() {
+  const { t, error: translateError } = useI18n();
   const { screen, setScreen, room, chat, roomError, me, myRole, identity, loading, error, setError, prefillCode, actions } =
     useZwanniRoom();
 
@@ -71,7 +82,7 @@ export function ZwanniApp() {
   }
 
   if (!room) {
-    return <LoadingScreen label={roomError ?? "Raum wird geladen…"} />;
+    return <LoadingScreen label={roomError ? translateError(roomError) : t.loadingRoom} />;
   }
 
   const phase = room.game_state.phase;
