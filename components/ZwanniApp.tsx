@@ -93,6 +93,7 @@ export function ZwanniApp() {
         onForfeit={(drafter) => void actions.forfeitOpening(drafter)}
         onRaise={(drafter, amount) => void actions.raiseBid(drafter, amount)}
         onAccept={(drafter) => void actions.acceptBid(drafter)}
+        onChoose={(drafter, take) => void actions.chooseCard(drafter, take)}
         loading={loading}
         error={error}
       />

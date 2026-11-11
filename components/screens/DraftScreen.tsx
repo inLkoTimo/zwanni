@@ -37,6 +37,7 @@ function TeamColumn({
   onForfeit,
   onRaise,
   onAccept,
+  onChoose,
   loading,
 }: {
   side: DrafterSlot;
@@ -46,6 +47,7 @@ function TeamColumn({
   onForfeit: (drafter: DrafterSlot) => void;
   onRaise: (drafter: DrafterSlot, amount: number) => void;
   onAccept: (drafter: DrafterSlot) => void;
+  onChoose: (drafter: DrafterSlot, take: boolean) => void;
   loading: boolean;
 }) {
   const round = room.game_state.round!;
@@ -94,7 +96,14 @@ function TeamColumn({
               Gebot: {current.highBid}$
             </p>
           )}
-          {isOpener && !current.solo && <p className="text-foreground/50">eröffnet gleich…</p>}
+          {isOpener && !current.solo && !current.choice && (
+            <p className="text-foreground/50">eröffnet gleich…</p>
+          )}
+          {isOpener && current.choice && (
+            <p className="text-gold">
+              {opponentName} hat kein Geld mehr – {isMe ? "du entscheidest" : `${name} entscheidet`}, wer die Karte bekommt.
+            </p>
+          )}
           {isOpener && current.solo && (
             <p className="text-gold">
               {opponentName} hat schon 4 Karten – dein Gebot gewinnt sofort.
@@ -103,7 +112,26 @@ function TeamColumn({
         </div>
       )}
 
-      {isMe && isMyTurn && current && (
+      {isMe && isMyTurn && current && current.choice && (
+        <div className="space-y-2 pt-1">
+          <button
+            disabled={loading}
+            onClick={() => onChoose(side, true)}
+            className={`w-full rounded-xl ${TEAM_BG[side]} text-black font-bold py-2.5 disabled:opacity-50`}
+          >
+            Karte nehmen
+          </button>
+          <button
+            disabled={loading}
+            onClick={() => onChoose(side, false)}
+            className="w-full rounded-xl border border-foreground/30 py-2.5 disabled:opacity-50"
+          >
+            {opponentName} geben
+          </button>
+        </div>
+      )}
+
+      {isMe && isMyTurn && current && !current.choice && (
         <div className="space-y-2 pt-1">
           {current.awaitingOpen ? (
             canOpen ? (
@@ -232,6 +260,7 @@ export function DraftScreen({
   onForfeit,
   onRaise,
   onAccept,
+  onChoose,
   loading,
   error,
 }: {
@@ -241,6 +270,7 @@ export function DraftScreen({
   onForfeit: (drafter: DrafterSlot) => void;
   onRaise: (drafter: DrafterSlot, amount: number) => void;
   onAccept: (drafter: DrafterSlot) => void;
+  onChoose: (drafter: DrafterSlot, take: boolean) => void;
   loading: boolean;
   error: string;
 }) {
@@ -295,6 +325,7 @@ export function DraftScreen({
             onForfeit={onForfeit}
             onRaise={onRaise}
             onAccept={onAccept}
+            onChoose={onChoose}
             loading={loading}
           />
           <TeamColumn
@@ -305,6 +336,7 @@ export function DraftScreen({
             onForfeit={onForfeit}
             onRaise={onRaise}
             onAccept={onAccept}
+            onChoose={onChoose}
             loading={loading}
           />
         </div>

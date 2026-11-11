@@ -149,7 +149,12 @@ export function startRound(
     categoryLabel: category.label,
     items,
     position: 0,
-    current: openAuction(0, items, { rosterA: [], rosterB: [] }),
+    current: openAuction(0, items, {
+      rosterA: [],
+      rosterB: [],
+      budgetA: STARTING_BUDGET,
+      budgetB: STARTING_BUDGET,
+    }),
     budgetA: STARTING_BUDGET,
     budgetB: STARTING_BUDGET,
     rosterA: [],
@@ -164,22 +169,47 @@ export function startRound(
   };
 }
 
-/** Startet die Auktion für die Karte an `position`. Ist eine Seite
- *  schon voll (4 Karten), kann sie nicht mehr mitbieten - dann ist
- *  es eine Solo-Auktion (`solo: true`): Opener ist automatisch die
- *  andere Seite, und ihr Gebot gewinnt sofort (siehe
- *  placeOpeningBid). */
+/** Startet die Auktion für die Karte an `position`.
+ *
+ *  - Ist eine Seite schon voll (4 Karten), kann sie nicht mehr
+ *    mitbieten: Solo-Auktion (`solo: true`). Opener ist die andere
+ *    Seite, und ihr Gebot gewinnt sofort (siehe placeOpeningBid).
+ *  - Hat eine Seite kein Geld mehr (und die andere schon), wird gar
+ *    nicht geboten: Entscheidung (`choice: true`). Die Seite mit Geld
+ *    entscheidet, ob sie die Karte nimmt oder der anderen gibt (siehe
+ *    chooseCard).
+ *  - Sonst normale Auktion, der Opener wechselt sich ab. */
 function openAuction(
   position: number,
   items: CategoryItem[],
-  rosters: { rosterA: DraftedCard[]; rosterB: DraftedCard[] },
+  round: {
+    rosterA: DraftedCard[];
+    rosterB: DraftedCard[];
+    budgetA: number;
+    budgetB: number;
+  },
 ): CurrentAuction | null {
   if (position >= items.length) return null;
 
-  const aFull = rosters.rosterA.length >= SLOTS_PER_DRAFTER;
-  const bFull = rosters.rosterB.length >= SLOTS_PER_DRAFTER;
+  const aFull = round.rosterA.length >= SLOTS_PER_DRAFTER;
+  const bFull = round.rosterB.length >= SLOTS_PER_DRAFTER;
   const solo = aFull || bFull;
-  const opener: DrafterSlot = solo ? (aFull ? "B" : "A") : position % 2 === 0 ? "A" : "B";
+
+  const aBroke = round.budgetA <= 0;
+  const bBroke = round.budgetB <= 0;
+  const choice = !solo && aBroke !== bBroke;
+
+  const opener: DrafterSlot = solo
+    ? aFull
+      ? "B"
+      : "A"
+    : choice
+      ? aBroke
+        ? "B"
+        : "A"
+      : position % 2 === 0
+        ? "A"
+        : "B";
 
   return {
     opener,
@@ -188,6 +218,7 @@ function openAuction(
     highBidder: null,
     turnToAct: opener,
     solo,
+    choice,
   };
 }
 
@@ -212,6 +243,7 @@ export function placeOpeningBid(
   const round = requireRound(state);
   const current = round.current as CurrentAuction;
 
+  if (current.choice) fail("Entscheide, ob du die Karte nimmst oder abgibst.");
   if (!current.awaitingOpen) fail("Die Eröffnung ist schon erfolgt.");
   if (current.turnToAct !== drafter) fail("Du bist gerade nicht dran.");
   if (!Number.isInteger(amount) || amount < 1) fail("Mindestgebot ist 1.");
@@ -249,7 +281,22 @@ export function forfeitOpening(state: GameState, drafter: DrafterSlot): GameStat
   if (!current.awaitingOpen) fail("Die Eröffnung ist schon erfolgt.");
   if (current.turnToAct !== drafter) fail("Du bist gerade nicht dran.");
 
+  if (current.choice) fail("Entscheide, ob du die Karte nimmst oder abgibst.");
+
   return awardCurrentItem(state, round, current.solo ? drafter : other(drafter), 0);
+}
+
+/** Die andere Seite hat kein Geld mehr - wer noch Geld hat, entscheidet
+ *  für diese Karte: selbst nehmen (`take: true`) oder der anderen Seite
+ *  geben (`take: false`). Beides ist kostenlos, geboten wird nicht. */
+export function chooseCard(state: GameState, drafter: DrafterSlot, take: boolean): GameState {
+  const round = requireRound(state);
+  const current = round.current as CurrentAuction;
+
+  if (!current.choice) fail("Gerade gibt es nichts zu entscheiden.");
+  if (current.turnToAct !== drafter) fail("Du bist gerade nicht dran.");
+
+  return awardCurrentItem(state, round, take ? drafter : other(drafter), 0);
 }
 
 export function raiseBid(

@@ -9,6 +9,7 @@ import { createInitialState } from "@/lib/game/state";
 import {
   acceptBid,
   addParticipant,
+  chooseCard,
   forfeitOpening,
   placeOpeningBid,
   playAgain as playAgainState,
@@ -181,6 +182,8 @@ export function useZwanniRoom() {
     raiseBid: (drafter: DrafterSlot, amount: number) =>
       withRoom((state) => raiseBid(state, drafter, amount)),
     acceptBid: (drafter: DrafterSlot) => withRoom((state) => acceptBid(state, drafter)),
+    chooseCard: (drafter: DrafterSlot, take: boolean) =>
+      withRoom((state) => chooseCard(state, drafter, take)),
     playAgain: () => withRoom((state) => playAgainState(state), "waiting"),
     sendChatMessage: (text: string) =>
       withRoom((state) => postChatMessage(state, me?.name ?? "Jemand", text)),

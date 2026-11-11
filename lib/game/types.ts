@@ -28,6 +28,12 @@ export type CurrentAuction = {
    *  mitbieten - der Opener bietet allein, und sein Gebot gewinnt
    *  sofort (kein Erhöhen/Zuschlagen mehr nötig). */
   solo: boolean;
+  /** true = die andere Seite hat kein Geld mehr. Dann wird nicht
+   *  geboten: der Opener (die Seite mit Geld) entscheidet nur, ob er
+   *  die Karte selbst nimmt oder sie der anderen Seite gibt - beides
+   *  kostenlos (siehe chooseCard). Bei alten Spielständen kann das
+   *  Feld fehlen. */
+  choice?: boolean;
 };
 
 /** Das Ergebnis der Computer-Einschätzung in Prozent (a + b = 100). */

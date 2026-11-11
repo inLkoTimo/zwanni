@@ -5,6 +5,7 @@ import { createInitialState } from "../lib/game/state";
 import {
   acceptBid,
   addParticipant,
+  chooseCard,
   auctioneerVerdict,
   forfeitOpening,
   MAX_CHAT_MESSAGES,
@@ -177,4 +178,55 @@ test("cannot bid below minimum or above budget", () => {
   assert.throws(() => placeOpeningBid(state, "A", 0));
   assert.throws(() => placeOpeningBid(state, "A", 21));
   assert.throws(() => placeOpeningBid(state, "B", 3)); // B ist nicht dran
+});
+
+test("kein Geld mehr: die andere Seite entscheidet, wer die Karte bekommt", () => {
+  let state = createInitialState("host", "Timo");
+  state = addParticipant(state, { id: "guest", name: "Alex" });
+  state = startRound(state, "tiere", seededRng(21));
+
+  // Karte 1: A setzt alles (20$), B nimmt an -> A ist pleite.
+  state = placeOpeningBid(state, "A", STARTING_BUDGET);
+  state = acceptBid(state, "B");
+  assert.equal(state.round!.budgetA, 0);
+
+  // Karte 2: B hat noch Geld, A nicht -> B entscheidet.
+  let current = state.round!.current!;
+  assert.equal(current.choice, true);
+  assert.equal(current.turnToAct, "B");
+  assert.throws(() => placeOpeningBid(state, "B", 1)); // kein Bieten in diesem Modus
+  assert.throws(() => chooseCard(state, "A", true)); // A ist nicht dran
+
+  // B gibt die Karte ab -> A bekommt sie kostenlos.
+  state = chooseCard(state, "B", false);
+  assert.equal(state.round!.rosterA.length, 2);
+  assert.equal(state.round!.rosterA[1].price, 0);
+
+  // B nimmt die naechste Karte selbst - ebenfalls kostenlos.
+  const budgetB = state.round!.budgetB;
+  state = chooseCard(state, "B", true);
+  assert.equal(state.round!.rosterB.length, 1);
+  assert.equal(state.round!.budgetB, budgetB);
+
+  // Runde zu Ende spielen: endet sauber 4:4.
+  let guard = 0;
+  while (state.phase === "drafting" && guard < 20) {
+    guard += 1;
+    current = state.round!.current!;
+    if (current.choice) {
+      state = chooseCard(state, current.turnToAct, true);
+    } else if (current.solo) {
+      if ((current.turnToAct === "A" ? state.round!.budgetA : state.round!.budgetB) < 1) {
+        state = forfeitOpening(state, current.turnToAct);
+      } else {
+        state = placeOpeningBid(state, current.opener, 1);
+      }
+    } else {
+      state = placeOpeningBid(state, current.opener, 1);
+      state = acceptBid(state, current.opener === "A" ? "B" : "A");
+    }
+  }
+  assert.equal(state.phase, "finished");
+  assert.equal(state.round!.rosterA.length, SLOTS_PER_DRAFTER);
+  assert.equal(state.round!.rosterB.length, SLOTS_PER_DRAFTER);
 });
